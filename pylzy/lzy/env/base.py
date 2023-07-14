@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import is_dataclass, fields
+from functools import total_ordering
 from typing import Dict, Any, TypeVar, Union
-from typing_extensions import Self, TypeGuard
+from typing_extensions import Self, TypeGuard, final
 
 
+@final
 class NotSpecifiedType:
     """
     >>> NotSpecified = NotSpecifiedType()
@@ -13,12 +15,22 @@ class NotSpecifiedType:
     1
     >>> 1 and NotSpecified
     NotSpecified
+    >>> {NotSpecified, NotSpecified}
+    {NotSpecified}
+    >>> NotSpecifiedType() == NotSpecified
+    True
     """
     def __repr__(self):
         return 'NotSpecified'
 
+    def __eq__(self, other):
+        return type(self) is type(other)
+
     def __bool__(self):
         return False
+
+    def __hash__(self):
+        return 0
 
 
 T = TypeVar('T')
@@ -33,6 +45,7 @@ def is_specified(val: Union[NotSpecifiedType, T]) -> TypeGuard[T]:
     return val is not NotSpecified
 
 
+@total_ordering
 class Deconstructible(ABC):
     def deconstruct(self) -> Dict[str, Any]:
         if is_dataclass(self):
@@ -55,3 +68,30 @@ class Deconstructible(ABC):
         right: Dict[str, Any] = dict(self.deconstruct(), **kwargs)
 
         return type(self)(**right)
+
+    def __eq__(self, other) -> bool:
+        if type(self) is not type(other):
+            return False
+
+        return self.deconstruct() == other.deconstruct()  # type: ignore
+
+    def __lt__(self, other) -> bool:
+        assert isinstance(other, Deconstructible)
+
+        left = tuple(self.deconstruct().items())
+        right = tuple(other.deconstruct().items())
+
+        return left < right
+
+    def __ne__(self, other) -> bool:
+        return not self == other
+
+    def __repr__(self) -> str:
+        args = (f'{k}={v!r}' for k, v in self.deconstruct().items())
+        return "{name}({args})".format(
+            name=self.__class__.__name__,
+            args=', '.join(args),
+        )
+
+    def __hash__(self) -> int:
+        return hash(tuple(self.deconstruct().items()))
